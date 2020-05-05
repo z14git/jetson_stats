@@ -59,6 +59,13 @@ class INFO(Page):
             self.stdscr.addstr(start_pos + idx + 1, posx + 2, "* " + name + ":")
             self.stdscr.addstr(start_pos + idx + 1, posx + spacing, info, curses.A_BOLD)
             idx += 1
+        # Other info
+        self.stdscr.addstr(start_pos + idx + 1, posx, "- Other:", curses.A_BOLD)
+        idx += 1
+        for name, info in self.jetson.board["other"].items():
+            self.stdscr.addstr(start_pos + idx + 1, posx + 2, "* " + name + ":")
+            self.stdscr.addstr(start_pos + idx + 1, posx + spacing, info, curses.A_BOLD)
+            idx += 1
         # IP address and Hostname
         if self.jetson.local_interfaces:
             plot_name_info(self.stdscr, start_pos + idx + 1, posx, "- Hostname", self.jetson.local_interfaces["hostname"])
@@ -70,5 +77,5 @@ class INFO(Page):
                 idx += 1
         # Author information
         plot_name_info(self.stdscr, start_pos - 1, width - 31, "Version", self.jetson.version)
-        plot_name_info(self.stdscr, start_pos, width - 30, "Author", "Raffaello Bonghi")
-        plot_name_info(self.stdscr, start_pos + 1, width - 30, "e-mail", "raffaello@rnext.it")
+        # plot_name_info(self.stdscr, start_pos, width - 30, "Author", "Raffaello Bonghi")
+        # plot_name_info(self.stdscr, start_pos + 1, width - 30, "e-mail", "raffaello@rnext.it")
