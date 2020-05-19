@@ -65,8 +65,10 @@ class INFO(Page):
         self.info_variable(start_pos + idx + 2, posx + 33, "Board", board["BOARD"], spacing=7)
         self.info_variable(start_pos + idx + 3, posx + 2, "* Code Name", board["CODENAME"])
         self.info_variable(start_pos + idx + 4, posx + 2, "* Cuda ARCH", board["CUDA_ARCH_BIN"])
-        self.info_variable(start_pos + idx + 5, posx + 2, "* Serial Number", board["SERIAL_NUMBER"])
-        idx += 5
+        self.info_variable(start_pos + idx + 5, posx + 2, "* GPU", board["GPU"])
+        self.info_variable(start_pos + idx + 6, posx + 2, "* CPU", board["CPU"])
+        self.info_variable(start_pos + idx + 7, posx + 2, "* Serial Number", board["SERIAL_NUMBER"])
+        idx += 7
         if board["BOARDIDS"]:
             self.info_variable(start_pos + idx + 1, posx + 2, "* Board ids", board["BOARDIDS"])
             idx += 1
