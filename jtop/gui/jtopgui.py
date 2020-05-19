@@ -214,9 +214,6 @@ class JTOPGUI:
             position += len(page.name) + 3
         self.stdscr.addstr(height - 1, position, "Q", curses.A_REVERSE | curses.A_BOLD)
         self.stdscr.addstr(height - 1, position + 1, "uit ", curses.A_REVERSE)
-        # Author name
-        name_author = "Raffaello Bonghi"
-        self.stdscr.addstr(height - 1, width - len(name_author), name_author, curses.A_REVERSE)
 
     def event_menu(self, mx, my):
         height, _ = self.stdscr.getmaxyx()

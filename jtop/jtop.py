@@ -218,6 +218,8 @@ class jtop(StatusObserver):
                  "MODULE": os.environ["JETSON_MODULE"],
                  "BOARD": os.environ["JETSON_BOARD"],
                  "CUDA_ARCH_BIN": os.environ["JETSON_CUDA_ARCH_BIN"],
+                 "GPU": "128-core Maxwell",
+                 "CPU": "Quad-core ARM A57 @ 1.43 GHz",
                  "SERIAL_NUMBER": os.environ["JETSON_SERIAL_NUMBER"].upper()}
         libraries = {"CUDA": os.environ["JETSON_CUDA"],
                      "cuDNN": os.environ["JETSON_CUDNN"],
@@ -227,7 +229,9 @@ class jtop(StatusObserver):
                      "OpenCV-Cuda": os.environ["JETSON_OPENCV_CUDA"],
                      "VPI": os.environ["JETSON_VPI"],
                      "Vulkan": os.environ["JETSON_VULKAN_INFO"]}
-        return {"info": info, "board": board, "libraries": libraries}
+        other = {"Video Encode": "4K @ 30 | 4x 1080p @ 30 | 9x 720p @ 30 (H.264/H.265)",
+                   "Video Decode": "4K @ 60 | 2x 4K @ 30 | 8x 1080p @ 30 | 18x 720p @ 30 (H.264/H.265)"}
+        return {"info": info, "board": board, "libraries": libraries, "other": other}
 
     @property
     def stats(self):
