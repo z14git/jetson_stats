@@ -1,4 +1,4 @@
-#!/bin/bash
+# -*- coding: UTF-8 -*-
 # This file is part of the jetson_stats package (https://github.com/rbonghi/jetson_stats or http://rnext.it).
 # Copyright (c) 2019 Raffaello Bonghi.
 #
@@ -15,4 +15,4 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-. /opt/jetson_stats/jetson_variables
+# flake8: noqa

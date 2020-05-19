@@ -21,6 +21,9 @@ from .nvpmodel import NVPmodel
 from .tegrastats import Tegrastats
 from .fan import Fan
 from .jetson_clocks import JetsonClocks
+from .swap import Swap
+from .cpu import cpuinfo
+from .engine import nvjpg
 from .common import (import_os_variables,
                      get_uptime,
                      status_disk,

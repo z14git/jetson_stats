@@ -46,9 +46,9 @@ class Fan(object):
     class FanException(Exception):
         pass
 
-    def __init__(self, path, jetson_clocks, temp_control=True, config_file="/opt/jetson_stats/fan_config"):
+    def __init__(self, path, jetson_clocks, config_file, temp_control=True):
         # Config file
-        self.config_file = config_file
+        self.config_file = config_file + "/fan_config"
         self.jetson_clocks = jetson_clocks
         # Initialize number max records to record
         self.path = path
@@ -76,7 +76,7 @@ class Fan(object):
         if os.path.isfile(self.path + "target_pwm"):
             self._status["status"] = 'ON'
         elif os.getuid() != 0:
-            self._status["status"] = 'REQUIRE SUDO'
+            self._status["status"] = 'SUDO SUGGESTED'
         else:
             self._status["status"] = 'OFF'
         # Load configuration if exist
@@ -175,10 +175,11 @@ class Fan(object):
     def clear(self):
         if os.path.isfile(self.config_file):
             # Remove configuration file
-            os.remove(self.config_file)
-            return True
-        else:
-            return False
+            try:
+                os.remove(self.config_file)
+            except OSError:
+                return False
+        return True
 
     def load(self):
         if os.path.isfile(self.config_file):

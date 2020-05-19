@@ -22,9 +22,8 @@ import subprocess as sp
 # Threading
 from threading import Thread
 # Tegrastats parser
-from .tegra_parse import VALS, MTS, RAM, SWAP, IRAM, CPUS, TEMPS, VOLTS
-
-# Create logger for jplotlib
+from .tegra_parse import VALS, MTS, RAM, SWAP, IRAM, CPUS, TEMPS, WATTS
+# Create logger for tegrastats
 logger = logging.getLogger(__name__)
 
 
@@ -65,7 +64,10 @@ class Tegrastats(Thread):
                     self._stats = self._decode(tegrastats_data)
                     # Notifiy all observers
                     for observer in self._observers:
-                        observer.update(self._stats)
+                        if callable(observer):
+                            observer(self._stats)
+                        else:
+                            observer.update(self._stats)
         except SystemExit:
             logger.error("System exit", exc_info=True)
         except AttributeError:
@@ -103,10 +105,12 @@ class Tegrastats(Thread):
 
     def close(self):
         if self.p is not None:
-            self.p.kill()
-            return True
-        else:
-            return False
+            try:
+                self.p.kill()
+                return True
+            except OSError:
+                pass
+        return False
 
     def __enter__(self):
         self.open()
@@ -136,7 +140,7 @@ class Tegrastats(Thread):
         stats['CPU'] = CPUS(text)
         # Parse temperatures
         stats['TEMP'] = TEMPS(text)
-        # Parse voltages
-        stats['VOLT'] = VOLTS(text)
+        # Parse Watts
+        stats['WATT'] = WATTS(text)
         return stats
 # EOF

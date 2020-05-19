@@ -17,11 +17,18 @@
 
 import abc
 import curses
+import signal
+# Logging
+import logging
+# Timer
+from datetime import datetime, timedelta
 # Graphics elements
-from .jtopguilib import (check_size,
+from .lib.common import (check_size,
                          check_curses,
                          set_xterm_title,
                          xterm_line)
+# Create logger for jplotlib
+logger = logging.getLogger(__name__)
 # Initialization abstract class
 # In according with: https://gist.github.com/alanjcastonguay/25e4db0edd3534ab732d6ff615ca9fc1
 ABC = abc.ABCMeta('ABC', (object,), {})
@@ -35,9 +42,18 @@ class Page(ABC):
         self.jetson = jetson
         self.refresh = refresh
 
+    def size_page(self):
+        height, width = self.stdscr.getmaxyx()
+        first = 0
+        # Remove a line for sudo header
+        if self.jetson.userid != 0:
+            height -= 1
+            first = 1
+        return height, width, first
+
     @abc.abstractmethod
     @check_curses
-    def draw(self, key):
+    def draw(self, key, mouse):
         pass
 
     def keyboard(self, key):
@@ -53,7 +69,7 @@ class JTOPGUI:
     """
     COLORS = {"RED": 1, "GREEN": 2, "YELLOW": 3, "BLUE": 4, "MAGENTA": 5, "CYAN": 6}
 
-    def __init__(self, stdscr, refresh, jetson, pages, init_page=0, start=True):
+    def __init__(self, stdscr, refresh, jetson, pages, init_page=0, start=True, loop=False, seconds=5):
         # Define pairing colors
         curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
         curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)
@@ -61,6 +77,13 @@ class JTOPGUI:
         curses.init_pair(4, curses.COLOR_BLUE, curses.COLOR_BLACK)
         curses.init_pair(5, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
         curses.init_pair(6, curses.COLOR_CYAN, curses.COLOR_BLACK)
+        # background
+        curses.init_pair(7, curses.COLOR_WHITE, curses.COLOR_RED)
+        curses.init_pair(8, curses.COLOR_WHITE, curses.COLOR_GREEN)
+        curses.init_pair(9, curses.COLOR_WHITE, curses.COLOR_YELLOW)
+        curses.init_pair(10, curses.COLOR_WHITE, curses.COLOR_BLUE)
+        curses.init_pair(11, curses.COLOR_WHITE, curses.COLOR_MAGENTA)
+        curses.init_pair(12, curses.COLOR_WHITE, curses.COLOR_CYAN)
         # Set curses reference, refresh and jetson controller
         self.stdscr = stdscr
         self.refresh = refresh
@@ -73,30 +96,54 @@ class JTOPGUI:
         # Initialize keyboard status
         self.key = -1
         self.old_key = -1
+        # Initialize mouse
+        self.mouse = ()
+        # Initialize signal
+        self.signal = True
+        # Catch all signals
+        for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
+            signal.signal(sig, self.handler)
         # Run the GUI
         if start:
-            self.run()
+            self.run(loop, seconds)
 
-    def run(self):
+    def handler(self, signum=None, frame=None):
+        logger.info("Signal handler called with signal {signum}".format(signum=signum))
+        # Close gui
+        self.signal = False
+
+    def run(self, loop, seconds):
         # In this program, we don't want keystrokes echoed to the console,
         # so we run this to disable that
         curses.noecho()
         # Additionally, we want to make it so that the user does not have to press
         # enter to send keys to our program, so here is how we get keys instantly
         curses.cbreak()
-        # Hide the cursor
-        curses.curs_set(0)
+        # Try to hide the cursor
+        if hasattr(curses, 'curs_set'):
+            try:
+                curses.curs_set(0)
+            except Exception:
+                pass
         # Lastly, keys such as the arrow keys are sent as funny escape sequences to
         # our program. We can make curses give us nicer values (such as curses.KEY_LEFT)
         # so it is easier on us.
         self.stdscr.keypad(True)
+        # Enable mouse mask
+        _, _ = curses.mousemask(curses.BUTTON1_CLICKED)
         # Refreshing page curses loop
         # https://stackoverflow.com/questions/54409978/python-curses-refreshing-text-with-a-loop
         self.stdscr.nodelay(1)
-        """ Here is the loop of our program, we keep clearing and redrawing in this loop """
-        while self.keyboard():
+        # Using current time
+        old = datetime.now()
+        # Here is the loop of our program, we keep clearing and redrawing in this loop
+        while not self.events() and self.signal:
             # Draw pages
             self.draw()
+            # Increase page automatically if loop enabled
+            if loop and datetime.now() - old >= timedelta(seconds=seconds):
+                self.increase(loop=True)
+                old = datetime.now()
 
     @check_size(20, 50)
     def draw(self):
@@ -107,7 +154,7 @@ class JTOPGUI:
         # Get page selected
         page = self.pages[self.n_page]
         # Draw the page
-        page.draw(self.key)
+        page.draw(self.key, self.mouse)
         # Draw menu
         self.menu()
         # Draw the screen
@@ -115,12 +162,21 @@ class JTOPGUI:
         # Set a timeout and read keystroke
         self.stdscr.timeout(self.refresh)
 
-    def increase(self):
-        idx = self.n_page + 1
+    def increase(self, loop=False):
+        # check reset
+        if loop and self.n_page >= len(self.pages) - 1:
+            idx = 0
+        else:
+            idx = self.n_page + 1
+        # Fix set new page
         self.set(idx + 1)
 
-    def decrease(self):
-        idx = self.n_page + 1
+    def decrease(self, loop=False):
+        # check reset
+        if loop and self.n_page <= 0:
+            idx = len(self.pages) + 1
+        else:
+            idx = self.n_page + 1
         self.set(idx - 1)
 
     def set(self, idx):
@@ -134,11 +190,16 @@ class JTOPGUI:
         # Print jtop basic info
         set_xterm_title("jtop" + xterm_line(self.jetson))
         # Write first line
-        board = self.jetson.board["board"]
-        board_info = board["Name"] + " - Jetpack " + board["Jetpack"]
-        self.stdscr.addstr(0, 0, board_info, curses.A_BOLD)
+        board = self.jetson.board["info"]
+        # Add extra Line if without sudo
+        idx = 0
         if self.jetson.userid != 0:
-            self.stdscr.addstr(0, len(board_info) + 1, "- PLEASE RUN WITH SUDO", curses.color_pair(1))
+            _, width = self.stdscr.getmaxyx()
+            self.stdscr.addstr(0, 0, ("{0:<" + str(width) + "}").format(" "), curses.color_pair(11))
+            string_sudo = "SUDO SUGGESTED"
+            self.stdscr.addstr(0, (width - len(string_sudo)) // 2, string_sudo, curses.color_pair(11))
+            idx = 1
+        self.stdscr.addstr(idx, 0, board["Machine"] + " - Jetpack " + board["Jetpack"], curses.A_BOLD)
 
     @check_curses
     def menu(self):
@@ -147,39 +208,80 @@ class JTOPGUI:
         self.stdscr.addstr(height - 1, 0, ("{0:<" + str(width - 1) + "}").format(" "), curses.A_REVERSE)
         position = 1
         for idx, page in enumerate(self.pages):
-            if self.n_page != idx:
-                self.stdscr.addstr(height - 1, position, ("{idx} {name}").format(idx=idx + 1, name=page.name), curses.A_REVERSE)
-            else:
-                self.stdscr.addstr(height - 1, position, ("{idx} {name}").format(idx=idx + 1, name=page.name))
-            position += len(page.name) + 2
-            self.stdscr.addstr(height - 1, position, " - ", curses.A_REVERSE)
-            position += 3
-        # Add close option menu
-        self.stdscr.addstr(height - 1, position, "Q to close", curses.A_REVERSE)
+            color = curses.A_NORMAL if self.n_page == idx else curses.A_REVERSE
+            self.stdscr.addstr(height - 1, position, str(idx + 1), color | curses.A_BOLD)
+            self.stdscr.addstr(height - 1, position + 1, page.name + " ", color)
+            position += len(page.name) + 3
+        self.stdscr.addstr(height - 1, position, "Q", curses.A_REVERSE | curses.A_BOLD)
+        self.stdscr.addstr(height - 1, position + 1, "uit ", curses.A_REVERSE)
         # Author name
         name_author = "Raffaello Bonghi"
         self.stdscr.addstr(height - 1, width - len(name_author), name_author, curses.A_REVERSE)
 
-    def keyboard(self):
-        self.key = self.stdscr.getch()
+    def event_menu(self, mx, my):
+        height, _ = self.stdscr.getmaxyx()
+        # Check if is an event menu
+        if my == height - 1:
+            # Check which page
+            position = 1
+            for idx, page in enumerate(self.pages):
+                size = len(page.name) + 3
+                # Check if mouse is inside menu name
+                if mx >= position and mx < position + size:
+                    # Set new page
+                    self.set(idx + 1)
+                    return False
+                # Increase counter
+                position += size
+            # Quit button
+            if mx >= position and mx < position + 4:
+                return True
+        return False
+
+    def events(self):
+        event = self.stdscr.getch()
+        # Run keyboard check
+        status_mouse = False
+        status_keyboard = self.keyboard(event)
+        # Clear event mouse
+        self.mouse = ()
+        # Check event mouse
+        if event == curses.KEY_MOUSE:
+            try:
+                _, mx, my, _, _ = curses.getmouse()
+                # Run event menu controller
+                status_mouse = self.event_menu(mx, my)
+                self.mouse = (mx, my)
+            except curses.error:
+                pass
+        return status_keyboard or status_mouse
+
+    def keyboard(self, event):
+        self.key = event
         if self.old_key != self.key:
             # keyboard check list
             if self.key == curses.KEY_LEFT:
-                self.decrease()
-            elif self.key == curses.KEY_RIGHT:
-                self.increase()
+                self.decrease(loop=True)
+            elif self.key == curses.KEY_RIGHT or self.key == ord('\t'):
+                self.increase(loop=True)
             elif self.key in [ord(str(n)) for n in range(10)]:
                 num = int(chr(self.key))
                 self.set(num)
-            elif self.key == ord('q') or self.key == ord('Q'):
+            elif self.key == ord('q') or self.key == ord('Q') or self.ESC_BUTTON(self.key):
                 # keyboard check quit button
-                return False
-            else:
-                # Run extra control for page if exist
-                for page in self.pages:
-                    # Run key controller
-                    page.keyboard(self.key)
+                return True
             # Store old value key
             self.old_key = self.key
-        return True
+        return False
+
+    def ESC_BUTTON(self, key):
+        """
+            Check there is another character prevent combination ALT + <OTHER CHR>
+            https://stackoverflow.com/questions/5977395/ncurses-and-esc-alt-keys
+        """
+        if key == 27:
+            n = self.stdscr.getch()
+            if n == -1:
+                return True
+        return False
 # EOF

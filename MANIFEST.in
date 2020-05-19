@@ -23,5 +23,12 @@ include LICENSE
 # Include the data files
 recursive-include scripts *
 
-# Include examples files
-recursive-include examples *.py
+# Include services files
+recursive-include services *.service
+recursive-include services *.sh
+
+# Remove test docs and examples and tox.ini
+exclude tox.it
+prune tests
+prune docs
+prune examples

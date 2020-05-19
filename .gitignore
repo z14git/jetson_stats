@@ -3,6 +3,8 @@
 
 # Setuptools distribution folder.
 dist/
+build/
+doc/
 
 # Python egg metadata, regenerated from source files by setuptools.
 /*.egg-info
@@ -16,3 +18,7 @@ venv/
 # Unit test / coverage reports
 .tox/
 .cache/
+swapfile
+test.*
+
+.vscode/

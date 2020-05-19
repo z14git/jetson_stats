@@ -16,15 +16,18 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 
+from copy import deepcopy
 from datetime import timedelta
 # control command line
 import curses
 # Graphics elements
-from .jtopguilib import (check_curses,
+from .lib.common import (check_curses,
                          strfdelta,
-                         linear_gauge,
                          label_freq,
-                         plot_name_info)
+                         plot_name_info,
+                         size_min)
+from .lib.linear_gauge import linear_gauge
+from ..core.jetson_clocks import JetsonClocks
 
 
 @check_curses
@@ -49,7 +52,8 @@ def plot_CPUs(stdscr, offest, list_cpus, width):
 
 
 @check_curses
-def plot_temperatures(stdscr, start, offset, width, jetson):
+def plot_temperatures(stdscr, start, offset, width, height, jetson):
+    start = start + (width - 17) // 2
     # Define color temperatures
     color_options = {
         60: curses.color_pair(1),
@@ -58,9 +62,13 @@ def plot_temperatures(stdscr, start, offset, width, jetson):
     }
     list_options = sorted(color_options.keys(), reverse=True)
     # Plot title
-    stdscr.addstr(offset, start, ("{name:<9} {val:^8}").format(name="[Sensor]", val="[Temp]"), curses.A_BOLD)
+    stdscr.addstr(offset, start - 1, " [Sensor] ", curses.A_BOLD)
+    stdscr.addstr(offset, start + 11, " [Temp] ", curses.A_BOLD)
     # Plot name and temperatures
-    for idx, temp in enumerate(sorted(jetson.stats['TEMP'])):
+    temps = deepcopy(jetson.stats['TEMP'])
+    if 'PMIC' in temps:
+        del temps['PMIC']
+    for idx, temp in enumerate(sorted(temps)):
         # Print temperature name
         value = jetson.stats['TEMP'][temp]
         stdscr.addstr(offset + idx + 1, start, ("{name:<7}").format(name=temp))
@@ -71,28 +79,64 @@ def plot_temperatures(stdscr, start, offset, width, jetson):
                 color = color_options[k]
                 break
         # Print temperature value
-        stdscr.addstr(offset + idx + 1, start + offset // 2 + 2, ("{val:8.2f}C").format(val=value), color)
+        stdscr.addstr(offset + idx + 1, start + offset // 2 + 3, ("{val:8.2f}C").format(val=value), color)
 
 
 @check_curses
-def plot_voltages(stdscr, start, offset, width, jetson):
+def plot_watts(stdscr, start, offset, width, height, jetson):
+    # List of all watts
+    watts = deepcopy(jetson.stats['WATT'])
+    # In according with:
+    # https://forums.developer.nvidia.com/t/power-consumption-monitoring/73608/8
+    # https://github.com/rbonghi/jetson_stats/issues/51
+    total_name = ""
+    for val in watts:
+        if "_IN" in val:
+            total_name = val
+            break
+    # Extract the total from list
+    # Otherwise sum all values
+    # Example for Jetson Xavier
+    # https://forums.developer.nvidia.com/t/xavier-jetson-total-power-consumption/81016
+    if total_name:
+        total = watts[total_name]
+        del watts[total_name]
+    else:
+        total = {'cur': 0, 'avg': 0}
     # Plot title
-    stdscr.addstr(offset, start, "{name:<12} [Cur]   [Avr]".format(name="[Power/mW]"), curses.A_BOLD)
-    # Plot voltages
-    for idx, volt in enumerate(sorted(jetson.stats['VOLT'])):
-        value = jetson.stats['VOLT'][volt]
-        stdscr.addstr(offset + idx + 1, start,
-                      ("{name:<12} {curr: <7} {avg: <7}").format(name=volt, curr=int(value['cur']), avg=int(value['avg'])))
+    center_column = width // 2
+    stdscr.addstr(offset, start, " [Power/mW] ", curses.A_BOLD)
+    stdscr.addstr(offset, start + center_column - 1, " [Cur] ", curses.A_BOLD)
+    stdscr.addstr(offset, start + width - 8, " [Avr] ", curses.A_BOLD)
+    # Plot watts
+    for idx, watt in enumerate(sorted(watts)):
+        value = jetson.stats['WATT'][watt]
+        watt_name = watt.replace("VDD_", "").replace("POM_", "").replace("_", " ")
+        if not total_name:
+            total['cur'] += int(value['cur'])
+            total['avg'] += int(value['avg'])
+        stdscr.addstr(offset + idx + 1, start + 1, watt_name, curses.A_NORMAL)
+        stdscr.addstr(offset + idx + 1, start + center_column, str(value['cur']), curses.A_NORMAL)
+        stdscr.addstr(offset + idx + 1, start + width - 7, str(value['avg']), curses.A_NORMAL)
+    # Fix total_name if empty
+    if not total_name:
+        total_name = "Total"
+    else:
+        total_name = total_name.replace("VDD_", "").replace("POM_", "").replace("_", " ")
+    # Plot totals before finishing
+    stdscr.addstr(offset + idx + 2, start + 1, total_name, curses.A_BOLD)
+    stdscr.addstr(offset + idx + 2, start + center_column, str(total['cur']), curses.A_BOLD)
+    stdscr.addstr(offset + idx + 2, start + width - 7, str(total['avg']), curses.A_BOLD)
 
 
 @check_curses
-def compact_info(stdscr, start, offset, width, jetson):
+def compact_info(stdscr, start, offset, width, height, jetson):
     # Title menu
-    stdscr.addstr(offset, start, ("{name: ^" + str(width) + "}").format(name="[info]"), curses.A_BOLD)
+    stdscr.addstr(offset, start + (width - 7) // 2, " [info] ", curses.A_BOLD)
     counter = 1
     # Model board information
     uptime_string = strfdelta(timedelta(seconds=jetson.uptime), "{days} days {hours}:{minutes}:{seconds}")
-    plot_name_info(stdscr, offset + counter, start, "UpT", uptime_string)
+    plot_name_info(stdscr, offset + counter, start + 1, "UpT", uptime_string)
     counter += 1
     # FAN status
     if "FAN" in jetson.stats:
@@ -107,55 +151,92 @@ def compact_info(stdscr, start, offset, width, jetson):
         else:
             label = ''
             value = fan.get('tpwm', 0)
-        linear_gauge(stdscr, offset=offset + counter, start=start, size=width,
+        linear_gauge(stdscr, offset=offset + counter, start=start + 1, size=width,
                      name='FAN',
                      value=value,
                      label=label,
                      status=fan['status'],
                      color=curses.color_pair(6))
     else:
-        stdscr.addstr(offset + counter, 0, "NO FAN", curses.color_pair(3))
+        stdscr.hline(offset + counter, start + 1, curses.ACS_BLOCK, width, curses.color_pair(3))
+        stdscr.addstr(offset + counter, start + (width - 8) // 2, " NO FAN ", curses.color_pair(3))
     counter += 1
     # Jetson clocks status
     jc = jetson.jetson_clocks
     if jc is not None:
-        jc_status = jc.status
-        if jc_status == "active":
-            color = curses.color_pair(2)  # Running (Green)
-        elif jc_status == "inactive":
-            color = curses.A_NORMAL       # Normal (Grey)
-        elif "ing" in jc_status:
-            color = curses.color_pair(3)  # Warning (Yellow)
-        else:
-            color = curses.color_pair(1)  # Error (Red)
-        # Show if JetsonClock is enabled or not
-        if jc.enable:
-            jc_status = "[" + jc_status + "]"
-        plot_name_info(stdscr, offset + counter, start, "Jetson Clocks", jc_status, color)
+        jc_service = jc.service
+        jc_enable = jc.enable
+        try:
+            jc_status = jc.status
+            # Running (Green) or Normal (Grey)
+            color = curses.color_pair(2) if jc_status else curses.A_NORMAL
+            # Write status jetson_clocks
+            jc_status_name = "Running" if jc_status else "Stopped"
+            # Specify the service running
+            if jc_service == "active":
+                jc_status_name += "+"
+            # Show if JetsonClock is enabled or not
+            if jc_enable:
+                jc_status_name = "[" + jc_status_name + "]"
+        except JetsonClocks.JCException:
+            # Fix error color
+            color = curses.color_pair(11)
+            # SUDO SUGGESTED is too long, change with a series of spaces
+            # The number 16 = len("jetson clocks: ") + 1
+            jc_status_name = (width - 16) * " "
+        # Show status jetson_clocks
+        plot_name_info(stdscr, offset + counter, start + 1, "Jetson clocks", jc_status_name, color)
         counter += 1
     # NVP Model
     nvpmodel = jetson.nvpmodel
     if nvpmodel is not None:
-        plot_name_info(stdscr, offset + counter, start, "NV Power[" + str(nvpmodel.num) + "]", nvpmodel.mode)
+        plot_name_info(stdscr, offset + counter, start + 1, "NV Power[" + str(nvpmodel.num) + "]", nvpmodel.mode)
         counter += 1
+    # Write all engines
+    engines(stdscr, start, offset + counter, width, height, jetson)
+
+
+def engines(stdscr, start, offset, width, height, jetson):
+    stdscr.hline(offset, start + 1, curses.ACS_HLINE, width - 1)
+    stdscr.addstr(offset, start + (width - 13) // 2, " [HW engines] ", curses.A_BOLD)
+    counter = 1
     # APE frequency
     if 'APE' in jetson.stats:
-        plot_name_info(stdscr, offset + counter, start, "APE", str(jetson.stats['APE']['val']) + "MHz")
+        plot_name_info(stdscr, offset + counter, start + 1, "APE", str(jetson.stats['APE']['val']) + "MHz")
         counter += 1
-    # NVENC frequency
-    stdscr.addstr(offset + counter, start, "HW engine:", curses.A_BOLD)
-    counter += 1
+    # Find encoders
     if 'NVENC' in jetson.stats:
-        plot_name_info(stdscr, offset + counter, start, " ENC", str(jetson.stats['NVENC']['val']) + "MHz")
+        enc_name = 'NVENC'
+        enc_val = "{value}{unit}Hz".format(value=jetson.stats['NVENC']['val'], unit="M")
+    elif 'MSENC' in jetson.stats:
+        enc_name = 'MSENC'
+        enc_val = "{value}{unit}Hz".format(value=jetson.stats['MSENC']['val'], unit="M")
     else:
-        plot_name_info(stdscr, offset + counter, start, " ENC", "NOT RUNNING")
-    counter += 1
-    # NVDEC frequency
+        enc_name = 'NVENC'
+        enc_val = "[OFF]"
+    # Find decoders
     if 'NVDEC' in jetson.stats:
-        plot_name_info(stdscr, offset + counter, start, " DEC", str(jetson.stats['NVDEC']['val']) + "MHz")
+        dec_name = 'NVDEC'
+        dec_val = "{value}{unit}Hz".format(value=jetson.stats['NVDEC']['val'], unit="M")
     else:
-        plot_name_info(stdscr, offset + counter, start, " DEC", "NOT RUNNING")
+        dec_name = 'NVDEC'
+        dec_val = "[OFF]"
+    double_info(stdscr, start + 1, offset + counter, width, (enc_name, enc_val), (dec_name, dec_val))
     counter += 1
-    if 'MSENC' in jetson.stats:
-        plot_name_info(stdscr, offset + counter, start, " ENC", str(jetson.stats['MSENC']['val']) + "MHz")
+    # NVJPG
+    nvjpg = jetson.nvjpg
+    if nvjpg:
+        status = nvjpg['status']
+        if status:
+            value, _, unit = size_min(nvjpg['rate'])
+            value = "{value}{unit}Hz".format(value=value, unit=unit)
+        else:
+            value = "[OFF]"
+        # Plot status
+        plot_name_info(stdscr, offset + counter, start + 1, "NVJPG", value)
+
+
+def double_info(stdscr, start, offset, width, enc, dec):
+    plot_name_info(stdscr, offset, start, enc[0], enc[1])
+    plot_name_info(stdscr, offset, start + width // 2, dec[0], dec[1])
 # EOF

@@ -48,7 +48,7 @@ fi
  . /lib/lsb/init-functions
  . /lib/init/vars.sh
 
-JETSON_STATS_FOLDER=/opt/jetson_stats
+JETSON_STATS_FOLDER="/usr/local/jetson_stats"
 # Load JETSON environment variables:
 # Not required jetson_variables at this time
 # . $JETSON_STATS_FOLDER/jetson_variables
@@ -57,7 +57,7 @@ JETSON_PERFORMANCE_WAIT_TIME=60
 JETSON_PERFORMANCE_CHECK_FILE=/tmp/jetson_performance_run
 JETSON_CONFIG_FOLDER="/tmp"
 JETSON_FAN_CONFIG="$JETSON_STATS_FOLDER/fan_config"
-
+# Locate jetson_clocks
 if [ -f /usr/bin/jetson_clocks ] ; then
     JETSON_CLOCK_SCRIPT=/usr/bin/jetson_clocks
 elif [ -f /home/nvidia/jetson_clocks.sh ] ; then
@@ -66,6 +66,8 @@ else
     echo "No jetson_clock script is availble in this board"
     exit 1
 fi
+# find nvpmodel
+NVPMODEL_SCRIPT=$(which nvpmodel)
 
 set_fan_speed()
 {
@@ -158,6 +160,13 @@ stop()
     # Write a file to check the system has running
     if [ -f $JETSON_PERFORMANCE_CHECK_FILE ] ; then
         sudo rm $JETSON_PERFORMANCE_CHECK_FILE
+    fi
+
+    if [ ! -z $NVPMODEL_SCRIPT ] ; then
+        # read last mode used
+        MODE=$(sudo $NVPMODEL_SCRIPT -q | tail -1)
+        # Run same mode again
+        sudo $NVPMODEL_SCRIPT -m $MODE
     fi
 
     # Configure the Jetson FAN

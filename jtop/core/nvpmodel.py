@@ -62,8 +62,7 @@ class NVPmodel():
     class NVPmodelException(Exception):
         pass
 
-    def __init__(self, type_board, jetson_clocks=None):
-        self.type_board = type_board
+    def __init__(self, jetson_clocks=None):
         self.jetson_clocks = jetson_clocks
         try:
             nvpmodel_p = sp.Popen(['nvpmodel', '-p', '--verbose'], stdout=sp.PIPE)
@@ -79,11 +78,12 @@ class NVPmodel():
                 match = NVPmodel.REGEXP.search(line)
                 # if match extract name and number
                 if match:
-                    pm = {"ID": int(match.group(1)), "Name": match.group(2), "status": True}
+                    mode = str(match.group(2))
+                    pm = {"ID": int(match.group(1)), "Name": mode.replace("MODE_", "").replace("_", " "), "status": True}
                     self.board += [pm]
         except OSError:
-            logger.info("This board {} does not have NVP Model".format(type_board))
-            raise NVPmodel.NVPmodelException("NVPmodel does not exist for this board {}".format(type_board))
+            logger.info("This board does not have NVP Model")
+            raise NVPmodel.NVPmodelException("NVPmodel does not exist for this board")
         except AttributeError:
             logger.info("Wrong open")
             raise NVPmodel.NVPmodelException("Wrong open")
@@ -100,6 +100,7 @@ class NVPmodel():
     def set(self, level):
         """ Set nvpmodel to a new status """
         try:
+            self.selected = level
             # Set the new nvpmodel status
             sep_nvp = sp.Popen(['nvpmodel', '-m', str(level)], stdout=sp.PIPE, stderr=sp.PIPE, stdin=sp.PIPE)
             out, _ = sep_nvp.communicate()
@@ -146,7 +147,8 @@ class NVPmodel():
                 # if match extract name and number
                 if match:
                     # Extract NV Power Mode
-                    self.mode = str(match.group(1))
+                    mode = str(match.group(1))
+                    self.mode = mode.replace("MODE_", "").replace("_", " ")
                     # Extract number
                     self.num = int(lines[idx + 1])
                     break
